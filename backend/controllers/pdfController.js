@@ -2,9 +2,14 @@ import fs from 'fs';
 import Summary from '../models/Summary.js';
 import { generateSummary } from '../utils/openaiHelper.js';
 import asyncHandler from 'express-async-handler';
-import PDFParser from 'pdf2json'; // Standard import works better here
+import PDFParser from 'pdf2json';
+import logger from '../utils/logger.js';
 
-// Helper: Wrap pdf2json in a Promise to use with await
+/**
+ * Helper to wrap pdf2json in a Promise for async/await usage
+ * @param {Buffer} buffer - The PDF file buffer
+ * @returns {Promise<string>} - Extracted text
+ */
 const parsePdfBuffer = (buffer) => {
   return new Promise((resolve, reject) => {
     const pdfParser = new PDFParser(null, 1); // 1 = text content only
@@ -14,7 +19,7 @@ const parsePdfBuffer = (buffer) => {
     });
 
     pdfParser.on("pdfParser_dataReady", (pdfData) => {
-      // pdf2json returns raw text, we need to join it
+      // pdf2json returns raw text content, usually encoded
       const rawText = pdfParser.getRawTextContent();
       resolve(rawText);
     });
@@ -23,12 +28,13 @@ const parsePdfBuffer = (buffer) => {
   });
 };
 
-// @desc    Upload PDF and Generate Summary
-// @route   POST /api/v1/pdf/summarize
-// @access  Private
+/**
+ * @desc    Upload PDF and Generate Summary
+ * @route   POST /api/v1/pdf/summarize
+ * @access  Private
+ */
 export const summarizePdf = asyncHandler(async (req, res) => {
-  console.log("👉 1. Request received (using pdf2json)");
-
+  // 1. Validation
   if (!req.file) {
     res.status(400);
     throw new Error('No PDF file uploaded');
@@ -37,25 +43,24 @@ export const summarizePdf = asyncHandler(async (req, res) => {
   const { language } = req.body;
   const filePath = req.file.path;
 
+  logger.info(`Processing PDF upload: ${req.file.originalname} for user ${req.user._id}`);
+
   try {
-    // 2. Read File
+    // 2. Read File from Disk
     const dataBuffer = fs.readFileSync(filePath);
 
-    // 3. Parse PDF using our new Helper
-    console.log("👉 3. Parsing PDF...");
+    // 3. Parse PDF
     const extractedText = await parsePdfBuffer(dataBuffer);
-    
-    console.log("✅ PDF Parsed! Length:", extractedText.length);
 
+    // 4. Validate Extraction
     if (!extractedText || extractedText.trim().length === 0) {
-      throw new Error('PDF contained no text. It might be a scanned image.');
+      throw new Error('PDF contained no text. It might be a scanned image or empty.');
     }
 
-    // 4. AI Summary
-    console.log("👉 4. Sending to OpenAI...");
+    // 5. AI Summary Generation
     const aiSummary = await generateSummary(extractedText, language || 'English');
 
-    // 5. Save to DB
+    // 6. Save to Database
     const newSummary = await Summary.create({
       user: req.user._id,
       fileName: req.file.originalname,
@@ -64,14 +69,17 @@ export const summarizePdf = asyncHandler(async (req, res) => {
       language: language || 'English',
     });
 
-    // 6. Cleanup
+    // 7. Cleanup: Delete uploaded file
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
+    // 8. Respond
     res.status(201).json(newSummary);
 
   } catch (error) {
-    console.error("🔥 CONTROLLER ERROR:", error.message);
+    // Always cleanup file on error to prevent storage leaks
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    res.status(500).json({ message: error.message });
+    
+    logger.error(`PDF Processing Failed: ${error.message}`);
+    res.status(500).json({ message: error.message || 'Failed to process PDF' });
   }
 });

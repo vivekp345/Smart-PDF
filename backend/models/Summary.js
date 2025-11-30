@@ -12,7 +12,7 @@ const summarySchema = new mongoose.Schema(
       required: true,
     },
     originalText: {
-      type: String, // We store this to allow re-summarizing later (optional)
+      type: String,
       required: false,
     },
     summaryText: {

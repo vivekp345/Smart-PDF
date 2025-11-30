@@ -15,32 +15,44 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: true,
+      required: function() {
+        // Password is only required if googleId is NOT present
+        return !this.googleId;
+      },
+    },
+    googleId: {
+      type: String,
+      // unique: true, // Optional: ensure Google IDs are unique if set
     },
   },
   {
-    timestamps: true, // Adds createdAt and updatedAt fields
+    timestamps: true,
   }
 );
 
-// --- Mongoose Middleware ---
-// Hash password BEFORE saving a new user
+// --- Middleware: Hash password before saving ---
 userSchema.pre('save', async function (next) {
-  // 'this' refers to the user document
+  // 1. If password is not modified, skip
   if (!this.isModified('password')) {
-    next(); // If password isn't being changed, move on
+    return next();
   }
 
-  // 1. Generate a "salt"
+  // 2. SAFETY CHECK: If there is no password (e.g. Google Login), skip hashing
+  // This prevents bcrypt from crashing on undefined passwords
+  if (!this.password) {
+    return next();
+  }
+
+  // 3. Hash the password
   const salt = await bcrypt.genSalt(10);
-  // 2. Hash the password with the salt
   this.password = await bcrypt.hash(this.password, salt);
 });
 
-// --- Mongoose Model Method ---
-// Add a custom method to the user schema to compare passwords
+// --- Method: Compare entered password with hashed password ---
 userSchema.methods.matchPassword = async function (enteredPassword) {
-  // 'this.password' is the hashed password from the DB
+  // Safety check: if user has no password (Google auth), return false
+  if (!this.password) return false;
+  
   return await bcrypt.compare(enteredPassword, this.password);
 };
 

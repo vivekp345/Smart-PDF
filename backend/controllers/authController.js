@@ -1,33 +1,33 @@
 import User from '../models/User.js';
 import generateToken from '../utils/generateToken.js';
 import asyncHandler from 'express-async-handler';
+import { OAuth2Client } from 'google-auth-library';
 
-// @desc    Register a new user (Sign Up)
-// @route   POST /api/v1/auth/signup
-// @access  Public
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+/**
+ * @desc    Register a new user
+ * @route   POST /api/v1/auth/signup
+ * @access  Public
+ */
 const signupUser = asyncHandler(async (req, res) => {
   const { name, email, password } = req.body;
 
-  // 1. Check if user already exists
   const userExists = await User.findOne({ email });
 
   if (userExists) {
-    res.status(400); // Bad Request
+    res.status(400);
     throw new Error('User already exists');
   }
 
-  // 2. Create new user
   const user = await User.create({
     name,
     email,
     password,
-    // The password will be automatically hashed by the 'pre-save' middleware in User.js
   });
 
-  // 3. If user created successfully, generate token and send response
   if (user) {
-    generateToken(res, user._id); // This sets the httpOnly cookie
-
+    generateToken(res, user._id);
     res.status(201).json({
       _id: user._id,
       name: user.name,
@@ -39,41 +39,88 @@ const signupUser = asyncHandler(async (req, res) => {
   }
 });
 
-// @desc    Authenticate user & get token (Login)
-// @route   POST /api/v1/auth/login
-// @access  Public
+/**
+ * @desc    Login user
+ * @route   POST /api/v1/auth/login
+ * @access  Public
+ */
 const loginUser = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  // 1. Find user by email
   const user = await User.findOne({ email });
 
-  // 2. Check if user exists AND if password matches
   if (user && (await user.matchPassword(password))) {
-    generateToken(res, user._id); // This sets the httpOnly cookie
-
+    generateToken(res, user._id);
     res.status(200).json({
       _id: user._id,
       name: user.name,
       email: user.email,
     });
   } else {
-    res.status(401); // Unauthorized
+    res.status(401);
     throw new Error('Invalid email or password');
   }
 });
 
-// @desc    Logout user & clear cookie
-// @route   POST /api/v1/auth/logout
-// @access  Public (or Private, depending on setup)
-const logoutUser = asyncHandler(async (req, res) => {
-  // To log out, we just clear the cookie
-  res.cookie('jwt', '', {
-    httpOnly: true,
-    expires: new Date(0), // Set expiration date to the past
+/**
+ * @desc    Google OAuth Login
+ * @route   POST /api/v1/auth/google
+ * @access  Public
+ */
+const googleLogin = asyncHandler(async (req, res) => {
+  const { token } = req.body;
+
+  // 1. Verify token with Google
+  const ticket = await client.verifyIdToken({
+    idToken: token,
+    audience: process.env.GOOGLE_CLIENT_ID,
   });
 
+  const { name, email, sub } = ticket.getPayload(); // sub is Google's unique ID
+
+  // 2. Check/Create User
+  let user = await User.findOne({ email });
+
+  if (user) {
+    // If user exists, link Google ID if missing
+    if (!user.googleId) {
+      user.googleId = sub;
+      await user.save();
+    }
+  } else {
+    // Create new user (password optional via model)
+    user = await User.create({
+      name,
+      email,
+      googleId: sub,
+    });
+  }
+
+  // 3. Generate Token
+  if (user) {
+    generateToken(res, user._id);
+    res.status(200).json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+    });
+  } else {
+    res.status(400);
+    throw new Error('Invalid user data');
+  }
+});
+
+/**
+ * @desc    Logout user
+ * @route   POST /api/v1/auth/logout
+ * @access  Public
+ */
+const logoutUser = asyncHandler(async (req, res) => {
+  res.cookie('jwt', '', {
+    httpOnly: true,
+    expires: new Date(0),
+  });
   res.status(200).json({ message: 'User logged out successfully' });
 });
 
-export { signupUser, loginUser, logoutUser };
+export { signupUser, loginUser, logoutUser, googleLogin };

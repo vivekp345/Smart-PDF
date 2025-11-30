@@ -1,81 +1,78 @@
 import express from 'express';
 import dotenv from 'dotenv';
-import cors from 'cors';
-import pdfRoutes from './routes/pdfRoutes.js';
 import cookieParser from 'cookie-parser';
+import cors from 'cors';
+import morgan from 'morgan';
+
 import connectDB from './config/db.js';
+import { validateEnv } from './config/validateEnv.js';
+import { cleanUploadsFolder } from './utils/cleanup.js';
+import logger from './utils/logger.js';
+
 import authRoutes from './routes/authRoutes.js';
+import pdfRoutes from './routes/pdfRoutes.js';
 import historyRoutes from './routes/historyRoutes.js';
 import profileRoutes from './routes/profileRoutes.js';
-import chatRoutes from './routes/chatRoutes.js'; // <-- Import
+import chatRoutes from './routes/chatRoutes.js';
 
-
-// --- Initial Config ---
-dotenv.config(); // Load .env variables
-connectDB(); // Connect to MongoDB
+dotenv.config();
+validateEnv();
+connectDB();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// --- Core Middlewares ---
-app.use(express.json()); // Allow app to accept JSON data
-app.use(express.urlencoded({ extended: true })); // Allow app to accept form data
-app.use(cookieParser()); // Allow app to parse cookies
-// --- CORS Configuration (Crucial Fix) ---
+// Run cleanup on startup
+cleanUploadsFolder();
+
+// --- 1. Logging (Dev only) ---
+if (process.env.NODE_ENV === 'development') {
+  app.use(morgan('dev'));
+}
+
+// --- 2. CORS ---
 app.use(cors({
-  origin: 'http://localhost:5173', // Allow your frontend URL
-  credentials: true,               // Allow cookies to be sent
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// --- API Routes ---
-// All auth routes will be prefixed with /api/v1/auth
+// --- 3. Parsers ---
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+
+// --- 4. Routes ---
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/pdf', pdfRoutes);
 app.use('/api/v1/history', historyRoutes);
 app.use('/api/v1/profile', profileRoutes);
 app.use('/api/v1/chat', chatRoutes);
 
-
-// --- Test Route ---
+// Health Check
 app.get('/', (req, res) => {
   res.send('API is running...');
 });
 
-// --- Error Handling (Optional but recommended) ---
-// 404 Not Found Handler
+// --- 5. Error Handling ---
 app.use((req, res, next) => {
   const error = new Error(`Not Found - ${req.originalUrl}`);
   res.status(404);
   next(error);
 });
 
-// General Error Handler
 app.use((err, req, res, next) => {
-  let statusCode = res.statusCode === 200 ? 500 : res.statusCode;
-  let message = err.message;
-
+  // Log the error using your professional logger
+  logger.error(err.message);
+  
+  const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
   res.status(statusCode).json({
-    message: message,
-    stack: process.env.NODE_ENV === 'production' ? '🥞' : err.stack,
+    message: err.message,
+    stack: process.env.NODE_ENV === 'production' ? null : err.stack,
   });
 });
 
-// General Error Handler
-app.use((err, req, res, next) => {
-  // --- ADD THIS LINE TO SEE ERRORS IN TERMINAL ---
-  console.error("🔥 SERVER ERROR:", err.message); 
-  // ---------------------------------------------
-
-  let statusCode = res.statusCode === 200 ? 500 : res.statusCode;
-  let message = err.message;
-
-  res.status(statusCode).json({
-    message: message,
-    stack: process.env.NODE_ENV === 'production' ? '🥞' : err.stack,
-  });
+app.listen(PORT, () => {
+  logger.info(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
 });
-
-// --- Start Server ---
-app.listen(PORT, () =>
-  console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`)
-);

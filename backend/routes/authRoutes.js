@@ -1,26 +1,11 @@
 import express from 'express';
+import { validate } from '../middlewares/validationMiddleware.js'; // <-- Import
+import { signupUser, loginUser, logoutUser, googleLogin } from '../controllers/authController.js';
 const router = express.Router();
 
-// Import your new controller functions
-import {
-  signupUser,
-  loginUser,
-  logoutUser,
-} from '../controllers/authController.js';
-
-// @route   POST /api/v1/auth/signup
-// @desc    Register a new user
-// @access  Public
-router.post('/signup', signupUser); // <-- Uncommented and linked
-
-// @route   POST /api/v1/auth/login
-// @desc    Authenticate user & get token
-// @access  Public
-router.post('/login', loginUser); // <-- Uncommented and linked
-
-// @route   POST /api/v1/auth/logout
-// @desc    Logout user & clear cookie
-// @access  Public
+router.post('/signup', validate('signup'), signupUser);
+router.post('/login', validate('login'), loginUser);
 router.post('/logout', logoutUser); // <-- Uncommented and linked
+router.post('/google', googleLogin); // <--- Add this route
 
 export default router;

@@ -1,30 +1,28 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, Loader2, ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { GoogleLogin } from '@react-oauth/google';
 
 const AuthForm = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({ name: '', email: '', password: '' });
   const [error, setError] = useState('');
   
-  const { login, signup, loading: authLoading } = useAuth();
+  const { login, signup, googleSignIn, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
-  // Handle form input changes
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // Handle Switch between Login and Signup
   const toggleMode = () => {
     setIsLogin(!isLogin);
     setError('');
     setFormData({ name: '', email: '', password: '' });
   };
 
-  // Handle Submit
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -37,7 +35,16 @@ const AuthForm = () => {
     }
 
     if (result.success) {
-      navigate('/summary'); // Redirect to dashboard on success
+      navigate('/summary');
+    } else {
+      setError(result.message);
+    }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse) => {
+    const result = await googleSignIn(credentialResponse.credential);
+    if (result.success) {
+      navigate('/summary');
     } else {
       setError(result.message);
     }
@@ -60,7 +67,6 @@ const AuthForm = () => {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Name Field (Signup Only) */}
         {!isLogin && (
           <div className="space-y-2">
             <label className="text-sm font-medium text-[#EAE0D5]">Full Name</label>
@@ -79,7 +85,6 @@ const AuthForm = () => {
           </div>
         )}
 
-        {/* Email Field */}
         <div className="space-y-2">
           <label className="text-sm font-medium text-[#EAE0D5]">Email Address</label>
           <div className="relative">
@@ -96,7 +101,6 @@ const AuthForm = () => {
           </div>
         </div>
 
-        {/* Password Field */}
         <div className="space-y-2">
           <label className="text-sm font-medium text-[#EAE0D5]">Password</label>
           <div className="relative">
@@ -113,7 +117,6 @@ const AuthForm = () => {
           </div>
         </div>
 
-        {/* Error Message */}
         {error && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
@@ -124,7 +127,6 @@ const AuthForm = () => {
           </motion.div>
         )}
 
-        {/* Submit Button */}
         <button
           type="submit"
           disabled={authLoading}
@@ -141,7 +143,25 @@ const AuthForm = () => {
         </button>
       </form>
 
-      {/* Toggle Link */}
+      {/* Google Login Section */}
+      <div className="mt-6 flex flex-col gap-4">
+        <div className="relative flex items-center justify-center">
+          <div className="border-t border-gray-700 w-full"></div>
+          <span className="bg-[#1B1F24] px-3 text-xs text-gray-500 uppercase">Or continue with</span>
+          <div className="border-t border-gray-700 w-full"></div>
+        </div>
+
+        <div className="flex justify-center">
+          <GoogleLogin
+            onSuccess={handleGoogleSuccess}
+            onError={() => setError('Google Login Failed')}
+            theme="filled_black"
+            shape="pill"
+            text="continue_with"
+          />
+        </div>
+      </div>
+
       <div className="mt-6 text-center">
         <p className="text-sm text-gray-400">
           {isLogin ? "Don't have an account?" : 'Already have an account?'}
