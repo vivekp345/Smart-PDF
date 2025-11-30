@@ -22,40 +22,36 @@ connectDB();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Run cleanup on startup
 cleanUploadsFolder();
 
-// --- 1. Logging (Dev only) ---
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
-// --- 2. CORS ---
+// --- CORS CONFIGURATION (Crucial for Cross-Domain Cookies) ---
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true, // Allow cookies to be sent
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// --- 3. Parsers ---
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// --- 4. Routes ---
+// --- Routes ---
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/pdf', pdfRoutes);
 app.use('/api/v1/history', historyRoutes);
 app.use('/api/v1/profile', profileRoutes);
 app.use('/api/v1/chat', chatRoutes);
 
-// Health Check
 app.get('/', (req, res) => {
   res.send('API is running...');
 });
 
-// --- 5. Error Handling ---
+// --- Error Handling ---
 app.use((req, res, next) => {
   const error = new Error(`Not Found - ${req.originalUrl}`);
   res.status(404);
@@ -63,9 +59,7 @@ app.use((req, res, next) => {
 });
 
 app.use((err, req, res, next) => {
-  // Log the error using your professional logger
   logger.error(err.message);
-  
   const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
   res.status(statusCode).json({
     message: err.message,
