@@ -9,11 +9,11 @@ const generateToken = (res, userId) => {
   const isProduction = process.env.NODE_ENV === 'production';
 
   res.cookie('jwt', token, {
-    httpOnly: true,
-    secure: isProduction, // Must be true in production (HTTPS)
-    sameSite: isProduction ? 'none' : 'lax', // Must be 'none' for cross-site cookies
-    maxAge: 30 * 24 * 60 * 60 * 1000,
-  });
+  httpOnly: true,
+  secure: true,      // MUST be true for Render (HTTPS)
+  sameSite: 'none',  // MUST be 'none' for Vercel -> Render communication
+  maxAge: 30 * 24 * 60 * 60 * 1000,
+});
 };
 
 export default generateToken;
